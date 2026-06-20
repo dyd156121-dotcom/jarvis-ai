@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JARVIS - 로그인</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a1a;
+      color: #cccccc;
+      font-family: 'Inter', -apple-system, sans-serif;
+      height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-box {
+      width: 340px;
+      background: #252526;
+      border: 1px solid #3c3c3c;
+      border-radius: 10px;
+      padding: 40px 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo {
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      color: #4ec9b0;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: #858585;
+      margin-top: -16px;
+      letter-spacing: 0.05em;
+    }
+
+    form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    input[type="password"] {
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #3c3c3c;
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: #cccccc;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="password"]:focus { border-color: #569cd6; }
+    input[type="password"]::placeholder { color: #555; }
+
+    button {
+      width: 100%;
+      background: #569cd6;
+      border: none;
+      border-radius: 6px;
+      padding: 10px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+
+    .error {
+      font-size: 12px;
+      color: #f48771;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="logo">JARVIS</div>
+    <div class="subtitle">박용일 전용 AI 어시스턴트</div>
+    <form method="POST">
+      <input type="password" name="password" placeholder="비밀번호 입력" autofocus/>
+      {% if error %}
+      <div class="error">비밀번호가 틀렸습니다.</div>
+      {% endif %}
+      <button type="submit">로그인</button>
+    </form>
+  </div>
+</body>
+</html>

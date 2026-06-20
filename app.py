@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context, session, redirect, url_for
+from functools import wraps
 import os
 import json
 import anthropic
@@ -7,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "jarvis-secret-key")
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 BASE_DIR = os.path.expanduser("~/Desktop")
@@ -48,12 +50,41 @@ SYSTEM_PROMPT = """당신은 박용일 님의 전용 AI 어시스턴트 JARVIS�
 항상 한국어로 소통하고, 어떤 RULE을 적용했는지 명시해주세요."""
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = False
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if password == os.environ.get("APP_PASSWORD", "jarvis1234"):
+            session["logged_in"] = True
+            return redirect(url_for("index"))
+        error = True
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
 
 @app.route("/chat", methods=["POST"])
+@login_required
 def chat():
     data = request.json
     message = data.get("message", "")
@@ -87,6 +118,7 @@ def chat():
 
 
 @app.route("/files")
+@login_required
 def list_files():
     path = request.args.get("path", BASE_DIR)
     path = os.path.realpath(path)
@@ -111,6 +143,7 @@ def list_files():
 
 
 @app.route("/read")
+@login_required
 def read_file():
     path = request.args.get("path", "")
     path = os.path.realpath(path)
