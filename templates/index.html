@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JARVIS</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #1a1a1a;
+      --sidebar:   #1e1e1e;
+      --panel:     #252526;
+      --border:    #3c3c3c;
+      --accent:    #569cd6;
+      --accent2:   #4ec9b0;
+      --text:      #cccccc;
+      --text-dim:  #858585;
+      --text-bright: #e8e8e8;
+      --user-msg:  #264f78;
+      --ai-msg:    #2d2d2d;
+      --hover:     #2a2d2e;
+      --active:    #37373d;
+      --green:     #4ec9b0;
+      --yellow:    #dcdcaa;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, monospace; font-size: 13px; overflow: hidden; }
+
+    #app { display: flex; height: 100dvh; }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      width: 240px;
+      min-width: 240px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.2s;
+    }
+
+    #sidebar.collapsed { width: 0; min-width: 0; border-right: none; }
+
+    .sidebar-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #252526;
+    }
+
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+
+    .sidebar-section {
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      padding: 6px 14px 4px;
+    }
+
+    .quick-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 13px;
+      transition: background 0.12s;
+    }
+    .quick-item:hover { background: var(--hover); }
+    .quick-item:active { background: var(--active); }
+    .quick-item .icon { font-size: 14px; width: 18px; text-align: center; }
+
+    #file-tree {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: #444 transparent;
+    }
+
+    .tree-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: background 0.1s;
+    }
+    .tree-item:hover { background: var(--hover); }
+    .tree-item.active { background: var(--active); color: var(--text-bright); }
+    .tree-item .ti { font-size: 13px; flex-shrink: 0; }
+    .tree-item .name { overflow: hidden; text-overflow: ellipsis; }
+
+    .tree-children { padding-left: 16px; }
+
+    #breadcrumb {
+      padding: 4px 14px;
+      font-size: 11px;
+      color: var(--text-dim);
+      border-top: 1px solid var(--border);
+      background: #252526;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── MAIN ── */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      height: 36px;
+      background: #252526;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #toggle-sidebar {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    #toggle-sidebar:hover { background: var(--hover); color: var(--text); }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 14px;
+      height: 36px;
+      font-size: 13px;
+      color: var(--text-dim);
+      border-right: 1px solid var(--border);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab.active { color: var(--text-bright); border-bottom: 2px solid var(--accent); background: var(--bg); }
+
+    .topbar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; box-shadow: 0 0 6px var(--green); }
+    .status-text { font-size: 12px; color: var(--green); }
+
+    #clear-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    #clear-btn:hover { background: var(--hover); color: var(--text); }
+
+    /* 파일 뷰어 */
+    #file-view {
+      display: none;
+      flex: 1;
+      overflow: auto;
+      background: var(--bg);
+    }
+    #file-view.open { display: flex; flex-direction: column; }
+
+    #file-view-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-dim);
+      background: #252526;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #file-view-close {
+      background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; line-height: 1;
+    }
+    #file-view-close:hover { color: var(--text); }
+
+    #file-content {
+      flex: 1;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── CHAT ── */
+    #chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      scrollbar-width: thin;
+      scrollbar-color: #444 transparent;
+    }
+
+    .msg-row {
+      display: flex;
+      padding: 14px 20px;
+      gap: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .msg-row:hover { background: rgba(255,255,255,0.02); }
+    .msg-row.user { background: rgba(38,79,120,0.15); }
+    .msg-row.ai { background: transparent; }
+
+    .msg-avatar {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .msg-avatar.user { background: var(--user-msg); }
+    .msg-avatar.ai { background: #4a4a4a; }
+
+    .msg-body { flex: 1; min-width: 0; }
+
+    .msg-name {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .msg-name.user { color: #569cd6; }
+    .msg-name.ai { color: var(--accent2); }
+
+    .msg-time { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+
+    .msg-text {
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 14px;
+      word-break: break-word;
+    }
+
+    /* 스트리밍 커서 */
+    .msg-text.streaming::after {
+      content: '▋';
+      display: inline;
+      animation: blink 0.7s step-end infinite;
+      color: var(--accent);
+      margin-left: 1px;
+    }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .msg-text p { margin: 0 0 8px; }
+    .msg-text p:last-child { margin-bottom: 0; }
+    .msg-text h1,.msg-text h2,.msg-text h3 { color: var(--yellow); margin: 14px 0 6px; font-size: 14px; }
+    .msg-text ul,.msg-text ol { padding-left: 22px; margin: 6px 0; }
+    .msg-text li { margin: 3px 0; }
+    .msg-text code { background: #1e1e1e; border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; color: var(--accent2); }
+    .msg-text pre {
+      background: #1e1e1e;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 12px 12px 12px;
+      margin: 10px 0;
+      overflow-x: auto;
+      position: relative;
+    }
+    .msg-text pre code { background: none; border: none; padding: 0; color: var(--text); font-size: 13px; }
+    .msg-text strong { color: var(--text-bright); }
+    .msg-text blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text-dim); margin: 8px 0; }
+    .msg-text table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    .msg-text th,.msg-text td { border: 1px solid var(--border); padding: 6px 10px; }
+    .msg-text th { background: #252526; color: var(--text-bright); }
+    .msg-text hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+    /* 복사 버튼 */
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #2d2d2d;
+      border: 1px solid #555;
+      color: #999;
+      font-size: 11px;
+      padding: 2px 9px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+      z-index: 1;
+    }
+    .msg-text pre:hover .copy-btn { opacity: 1; }
+    .copy-btn:hover { background: #3c3c3c; color: #fff; }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+    /* 입력창 */
+    #input-area {
+      border-top: 1px solid var(--border);
+      background: #252526;
+      padding: 12px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    #input-wrap {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      align-items: flex-end;
+      padding: 8px 12px;
+      transition: border-color 0.2s;
+    }
+    #input-wrap:focus-within { border-color: var(--accent); }
+
+    #input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      max-height: 160px;
+      line-height: 1.5;
+      padding: 0;
+    }
+    #input::placeholder { color: var(--text-dim); }
+
+    #send-btn {
+      background: var(--accent);
+      border: none;
+      border-radius: 5px;
+      color: #fff;
+      width: 34px; height: 34px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity 0.2s;
+    }
+    #send-btn:disabled { opacity: 0.3; cursor: default; }
+    #send-btn:not(:disabled):hover { opacity: 0.85; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+    @media (max-width: 600px) {
+      #sidebar { width: 0; min-width: 0; border-right: none; position: absolute; z-index: 100; height: 100%; }
+      #sidebar.mobile-open { width: 240px; min-width: 240px; border-right: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">탐색기</span>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">빠른 실행</div>
+      <div class="quick-item" onclick="quickSend('품질관리 서류 작성을 도와줘')">
+        <span class="icon">📋</span> 품질서류 [Q]
+      </div>
+      <div class="quick-item" onclick="quickSend('블로그 글 작성을 도와줘')">
+        <span class="icon">✍️</span> 블로그 [B]
+      </div>
+      <div class="quick-item" onclick="quickSend('유튜브 영상 기획을 도와줘')">
+        <span class="icon">🎬</span> 유튜브 [Y]
+      </div>
+      <div class="quick-item" onclick="quickSend('오늘 할 일을 정리해줘')">
+        <span class="icon">📌</span> 할일 정리
+      </div>
+    </div>
+
+    <div class="section-label" style="padding-top:10px">파일</div>
+    <div id="file-tree"></div>
+    <div id="breadcrumb">~/Desktop</div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="topbar">
+      <button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+      <div class="tab active">💬 채팅</div>
+      <div id="file-tab" class="tab" style="display:none" onclick="showChat()"></div>
+      <div class="topbar-right">
+        <div class="status-dot"></div>
+        <span class="status-text">연결됨</span>
+        <button id="clear-btn" onclick="clearChat()">초기화</button>
+      </div>
+    </div>
+
+    <!-- 파일 뷰어 -->
+    <div id="file-view">
+      <div id="file-view-header">
+        <span id="file-view-path"></span>
+        <button id="file-view-close" onclick="closeFileView()">✕</button>
+      </div>
+      <pre id="file-content"></pre>
+    </div>
+
+    <!-- 채팅 패널 -->
+    <div id="chat-panel">
+      <div id="messages"></div>
+      <div id="input-area">
+        <div id="input-wrap">
+          <textarea id="input" rows="1" placeholder="메시지를 입력하세요... (Shift+Enter: 줄바꿈)"
+            oninput="autoResize(this)"
+            onkeydown="handleKey(event)"></textarea>
+        </div>
+        <button id="send-btn" onclick="sendMessage()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const STORAGE_KEY = 'yongil-chat-v1';
+  let history = [];
+  let sidebarOpen = true;
+  let isStreaming = false;
+  const messagesEl = document.getElementById('messages');
+
+  // 초기화
+  (function init() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        history = JSON.parse(saved);
+        history.forEach(msg => {
+          if (msg.role === 'user') addUserMessage(msg.content, false);
+          else addAiMessage(msg.content, false);
+        });
+        scrollBottom();
+      } catch(e) {
+        history = [];
+        showWelcome();
+      }
+    } else {
+      showWelcome();
+    }
+    loadFiles('');
+  })();
+
+  function showWelcome() {
+    addAiMessage('안녕하세요, 박용일 님! 👋\n\n저는 **JARVIS**, 용일 님 전용 AI 어시스턴트입니다.\n왼쪽 사이드바에서 빠른 실행 버튼을 누르거나, 파일을 클릭해서 내용을 볼 수 있어요.\n\n무엇이든 편하게 말씀해 주세요!', false);
+  }
+
+  function saveHistory() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  }
+
+  function now() {
+    return new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function addUserMessage(text, scroll = true) {
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    row.innerHTML = `
+      <div class="msg-avatar user">👤</div>
+      <div class="msg-body">
+        <div class="msg-name user">박용일 <span class="msg-time">${now()}</span></div>
+        <div class="msg-text">${escHtml(text)}</div>
+      </div>`;
+    messagesEl.appendChild(row);
+    if (scroll) scrollBottom();
+    return row;
+  }
+
+  function addAiMessage(text, scroll = true) {
+    const row = document.createElement('div');
+    row.className = 'msg-row ai';
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+    body.innerHTML = `<div class="msg-name ai">JARVIS <span class="msg-time">${now()}</span></div>`;
+    const textEl = document.createElement('div');
+    textEl.className = 'msg-text';
+    textEl.innerHTML = marked.parse(text);
+    body.appendChild(textEl);
+    row.innerHTML = '<div class="msg-avatar ai">🤖</div>';
+    row.appendChild(body);
+    messagesEl.appendChild(row);
+    applyHighlight(textEl);
+    if (scroll) scrollBottom();
+    return row;
+  }
+
+  function createStreamingRow() {
+    const row = document.createElement('div');
+    row.className = 'msg-row ai';
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+    body.innerHTML = `<div class="msg-name ai">JARVIS <span class="msg-time">${now()}</span></div>`;
+    const textEl = document.createElement('div');
+    textEl.className = 'msg-text streaming';
+    body.appendChild(textEl);
+    row.innerHTML = '<div class="msg-avatar ai">🤖</div>';
+    row.appendChild(body);
+    messagesEl.appendChild(row);
+    scrollBottom();
+    return { row, textEl };
+  }
+
+  function applyHighlight(container) {
+    container.querySelectorAll('pre code').forEach(block => {
+      if (!block.dataset.highlighted) {
+        hljs.highlightElement(block);
+      }
+    });
+    container.querySelectorAll('pre').forEach(pre => {
+      if (pre.querySelector('.copy-btn')) return;
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = '복사';
+      btn.onclick = () => {
+        const code = pre.querySelector('code');
+        const content = code ? code.textContent : pre.textContent;
+        navigator.clipboard.writeText(content).then(() => {
+          btn.textContent = '✓ 복사됨';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = '복사'; btn.classList.remove('copied'); }, 2000);
+        });
+      };
+      pre.appendChild(btn);
+    });
+  }
+
+  function scrollBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function escHtml(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  function quickSend(text) {
+    document.getElementById('input').value = text;
+    sendMessage();
+  }
+
+  function clearChat() {
+    history = [];
+    localStorage.removeItem(STORAGE_KEY);
+    messagesEl.innerHTML = '';
+    addAiMessage('대화가 초기화되었습니다. 새로운 대화를 시작해 주세요! 😊');
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('input');
+    const btn = document.getElementById('send-btn');
+    const text = input.value.trim();
+    if (!text || isStreaming) return;
+
+    isStreaming = true;
+    btn.disabled = true;
+    input.value = '';
+    input.style.height = 'auto';
+
+    addUserMessage(text);
+    const { textEl } = createStreamingRow();
+    let fullText = '';
+
+    try {
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history })
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.chunk !== undefined) {
+              fullText += data.chunk;
+              textEl.innerHTML = marked.parse(fullText);
+              scrollBottom();
+            } else if (data.done) {
+              history = data.history;
+              saveHistory();
+            }
+          } catch(e) {}
+        }
+      }
+
+      textEl.innerHTML = marked.parse(fullText || '응답을 받지 못했습니다.');
+      textEl.classList.remove('streaming');
+      applyHighlight(textEl);
+      scrollBottom();
+
+    } catch(e) {
+      textEl.innerHTML = '<span style="color:#f48771">오류가 발생했습니다. 다시 시도해 주세요.</span>';
+      textEl.classList.remove('streaming');
+    }
+
+    isStreaming = false;
+    btn.disabled = false;
+    input.focus();
+  }
+
+  // ── 사이드바 ──
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+    document.getElementById('sidebar').classList.toggle('mobile-open', sidebarOpen);
+  }
+
+  // ── 파일 트리 ──
+  async function loadFiles(path) {
+    const url = path ? `/files?path=${encodeURIComponent(path)}` : '/files';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) return;
+
+    document.getElementById('breadcrumb').textContent = data.path.replace(/\/Users\/[^/]+/, '~');
+    renderTree(document.getElementById('file-tree'), data.items, data.path);
+  }
+
+  function renderTree(container, items, parentPath) {
+    container.innerHTML = '';
+    items.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'tree-item';
+      const icon = item.is_dir ? '📁' : getFileIcon(item.name);
+      el.innerHTML = `<span class="ti">${icon}</span><span class="name">${item.name}</span>`;
+      el.title = item.name;
+
+      if (item.is_dir) {
+        el.onclick = () => loadFiles(item.path);
+      } else {
+        el.onclick = () => openFile(item.path, item.name);
+      }
+      container.appendChild(el);
+    });
+  }
+
+  function getFileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    const map = { py:'🐍', js:'📜', html:'🌐', css:'🎨', md:'📝', txt:'📄', json:'📋', pdf:'📕', png:'🖼', jpg:'🖼', jpeg:'🖼', mp4:'🎬', mov:'🎬', xlsx:'📊', csv:'📊' };
+    return map[ext] || '📄';
+  }
+
+  async function openFile(path, name) {
+    document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+
+    const res = await fetch(`/read?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+
+    if (data.error) {
+      addAiMessage(`파일을 열 수 없습니다: ${data.error}`);
+      return;
+    }
+
+    document.getElementById('file-view-path').textContent = name;
+    document.getElementById('file-content').textContent = data.content;
+    document.getElementById('file-view').classList.add('open');
+    document.getElementById('chat-panel').style.display = 'none';
+
+    const tab = document.getElementById('file-tab');
+    tab.textContent = `📄 ${name}`;
+    tab.style.display = 'flex';
+    tab.classList.add('active');
+    document.querySelectorAll('.tab')[0].classList.remove('active');
+  }
+
+  function closeFileView() {
+    document.getElementById('file-view').classList.remove('open');
+    document.getElementById('chat-panel').style.display = 'flex';
+    document.getElementById('file-tab').style.display = 'none';
+    document.querySelectorAll('.tab')[0].classList.add('active');
+    document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+  }
+
+  function showChat() {
+    closeFileView();
+  }
+</script>
+</body>
+</html>
