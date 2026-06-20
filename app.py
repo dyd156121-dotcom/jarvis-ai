@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context, session, redirect, url_for
 from functools import wraps
+import subprocess
 import os
 import json
 import anthropic
@@ -11,14 +12,19 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "jarvis-secret-key")
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-BASE_DIR = os.path.expanduser("~/Desktop")
+HOME = os.path.expanduser("~")
 
 SYSTEM_PROMPT = """당신은 박용일 님의 전용 AI 어시스턴트 JARVIS입니다.
 
 박용일 님 정보:
 - 30세, 건설현장 품질관리자 / 블로거 / 먹방 유튜버
 
-아래 규칙 체계를 따릅니다:
+당신은 박용일 님의 맥 컴퓨터를 직접 제어할 수 있습니다. 아래 도구들을 사용해 실제로 작업을 수행해주세요:
+- execute_command: 터미널 명령어 실행 (파일/폴더 생성, 삭제, 이동, 앱 실행 등)
+- read_file: 파일 내용 읽기
+- write_file: 파일 생성 및 수정
+
+사용자가 맥에서 무언가를 해달라고 하면 직접 도구를 사용해 실행하고 결과를 알려주세요.
 
 [RULE-G] 공통 규칙
 - RULE-G-01: 모든 작업은 목적을 먼저 정의하고 시작한다.
@@ -48,6 +54,83 @@ SYSTEM_PROMPT = """당신은 박용일 님의 전용 AI 어시스턴트 JARVIS�
 - RULE-Y-06: 완성된 영상은 유튜브 알고리즘 최적화(제목/설명/태그/챕터) 후 업로드한다.
 
 항상 한국어로 소통하고, 어떤 RULE을 적용했는지 명시해주세요."""
+
+TOOLS = [
+    {
+        "name": "execute_command",
+        "description": "맥 터미널에서 명령어를 실행합니다. 파일/폴더 생성, 삭제, 이동, 앱 실행 등에 사용합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "실행할 터미널 명령어"}
+            },
+            "required": ["command"]
+        }
+    },
+    {
+        "name": "read_file",
+        "description": "맥의 파일 내용을 읽습니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "읽을 파일 경로 (~ 사용 가능)"}
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "write_file",
+        "description": "맥의 파일을 생성하거나 수정합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "파일 경로 (~ 사용 가능)"},
+                "content": {"type": "string", "description": "파일에 쓸 내용"}
+            },
+            "required": ["path", "content"]
+        }
+    }
+]
+
+
+def execute_tool(name, tool_input):
+    if name == "execute_command":
+        cmd = tool_input.get("command", "")
+        try:
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True,
+                timeout=30, cwd=HOME
+            )
+            output = (result.stdout + result.stderr).strip()
+            return output or "(명령어 실행 완료, 출력 없음)"
+        except subprocess.TimeoutExpired:
+            return "오류: 실행 시간 초과 (30초)"
+        except Exception as e:
+            return f"오류: {e}"
+
+    elif name == "read_file":
+        path = os.path.expanduser(tool_input.get("path", ""))
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            return content[:5000] + ("\n...(이하 생략)" if len(content) > 5000 else "")
+        except Exception as e:
+            return f"오류: {e}"
+
+    elif name == "write_file":
+        path = os.path.expanduser(tool_input.get("path", ""))
+        content = tool_input.get("content", "")
+        try:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return f"파일 저장 완료: {path}"
+        except Exception as e:
+            return f"오류: {e}"
+
+    return "알 수 없는 도구"
 
 
 def login_required(f):
@@ -93,16 +176,86 @@ def chat():
     api_messages = history + [{"role": "user", "content": message}]
 
     def generate():
+        current_messages = api_messages[:]
         full_reply = ""
-        with client.messages.stream(
-            model="claude-sonnet-4-6",
-            max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            messages=api_messages,
-        ) as stream:
-            for text in stream.text_stream:
-                full_reply += text
-                yield f"data: {json.dumps({'chunk': text}, ensure_ascii=False)}\n\n"
+
+        while True:
+            tool_input_buf = {}
+            current_tool_id = None
+            content_blocks = []
+            stop_reason = None
+
+            with client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                messages=current_messages,
+                tools=TOOLS,
+            ) as stream:
+                for event in stream:
+                    t = event.type
+
+                    if t == "content_block_start":
+                        block = event.content_block
+                        if block.type == "tool_use":
+                            current_tool_id = block.id
+                            tool_input_buf[block.id] = {
+                                "name": block.name,
+                                "raw": ""
+                            }
+
+                    elif t == "content_block_delta":
+                        delta = event.delta
+                        if delta.type == "text_delta":
+                            chunk = delta.text
+                            full_reply += chunk
+                            yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+                        elif delta.type == "input_json_delta" and current_tool_id:
+                            tool_input_buf[current_tool_id]["raw"] += delta.partial_json
+
+                    elif t == "content_block_stop":
+                        if current_tool_id and current_tool_id in tool_input_buf:
+                            try:
+                                tool_input_buf[current_tool_id]["input"] = json.loads(
+                                    tool_input_buf[current_tool_id]["raw"]
+                                )
+                            except Exception:
+                                tool_input_buf[current_tool_id]["input"] = {}
+                            current_tool_id = None
+
+                final_msg = stream.get_final_message()
+                stop_reason = final_msg.stop_reason
+                content_blocks = final_msg.content
+
+            if stop_reason == "tool_use":
+                current_messages.append({"role": "assistant", "content": content_blocks})
+                tool_results = []
+
+                for block in content_blocks:
+                    if block.type == "tool_use":
+                        info = tool_input_buf.get(block.id, {})
+                        tool_name = block.name
+                        tool_input = block.input
+
+                        cmd_display = (
+                            tool_input.get("command")
+                            or tool_input.get("path", "")
+                        )
+                        yield f"data: {json.dumps({'tool_start': tool_name, 'cmd': cmd_display}, ensure_ascii=False)}\n\n"
+
+                        result = execute_tool(tool_name, tool_input)
+
+                        yield f"data: {json.dumps({'tool_end': result[:500]}, ensure_ascii=False)}\n\n"
+
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result
+                        })
+
+                current_messages.append({"role": "user", "content": tool_results})
+            else:
+                break
 
         new_history = history + [
             {"role": "user", "content": message},
@@ -120,10 +273,10 @@ def chat():
 @app.route("/files")
 @login_required
 def list_files():
-    path = request.args.get("path", BASE_DIR)
+    path = request.args.get("path", os.path.expanduser("~/Desktop"))
     path = os.path.realpath(path)
 
-    if not path.startswith(os.path.expanduser("~")):
+    if not path.startswith(HOME):
         return jsonify({"error": "접근 불가"}), 403
 
     try:
@@ -148,7 +301,7 @@ def read_file():
     path = request.args.get("path", "")
     path = os.path.realpath(path)
 
-    if not path.startswith(os.path.expanduser("~")):
+    if not path.startswith(HOME):
         return jsonify({"error": "접근 불가"}), 403
 
     try:

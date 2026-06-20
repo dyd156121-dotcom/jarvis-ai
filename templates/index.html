@@ -335,6 +335,30 @@
     .msg-text th { background: #252526; color: var(--text-bright); }
     .msg-text hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 
+    /* 도구 실행 블록 */
+    .tool-block {
+      background: #1a1a1a;
+      border: 1px solid #3c3c3c;
+      border-left: 3px solid var(--yellow);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin: 8px 0;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    .tool-block .tool-name { color: var(--yellow); font-weight: 600; margin-bottom: 4px; }
+    .tool-block .tool-cmd { color: var(--accent2); word-break: break-all; }
+    .tool-block .tool-result {
+      color: var(--text-dim);
+      margin-top: 6px;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow-y: auto;
+      border-top: 1px solid var(--border);
+      padding-top: 6px;
+    }
+    .tool-block .tool-running { color: var(--yellow); animation: blink 1s step-end infinite; }
+
     /* 복사 버튼 */
     .copy-btn {
       position: absolute;
@@ -646,6 +670,7 @@
     addUserMessage(text);
     const { textEl } = createStreamingRow();
     let fullText = '';
+    let lastToolBlock = null;
 
     try {
       const response = await fetch('/chat', {
@@ -673,7 +698,22 @@
             if (data.chunk !== undefined) {
               fullText += data.chunk;
               textEl.innerHTML = marked.parse(fullText);
+              lastToolBlock = null;
               scrollBottom();
+            } else if (data.tool_start !== undefined) {
+              const toolNames = { execute_command: '터미널 실행', read_file: '파일 읽기', write_file: '파일 쓰기' };
+              lastToolBlock = document.createElement('div');
+              lastToolBlock.className = 'tool-block';
+              lastToolBlock.innerHTML = `
+                <div class="tool-name">🔧 ${toolNames[data.tool_start] || data.tool_start}</div>
+                <div class="tool-cmd">${escHtml(data.cmd)}</div>
+                <div class="tool-result"><span class="tool-running">실행 중...</span></div>`;
+              textEl.appendChild(lastToolBlock);
+              scrollBottom();
+            } else if (data.tool_end !== undefined) {
+              if (lastToolBlock) {
+                lastToolBlock.querySelector('.tool-result').textContent = data.tool_end;
+              }
             } else if (data.done) {
               history = data.history;
               saveHistory();
